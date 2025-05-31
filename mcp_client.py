@@ -3,6 +3,7 @@ import json
 import subprocess
 from typing import List, Dict, Any, Optional
 from contextlib import asynccontextmanager
+from monitoring.logger_config import logger
 
 class SeleniumMCPClient:
     def __init__(self):
@@ -40,6 +41,7 @@ class SeleniumMCPClient:
             
             if response and "result" in response:
                 print("MCP Server initialized successfully")
+                logger.info("MCP Server initialized successfully")
                 await self._list_tools()
                 return True
             else:

@@ -1,4 +1,6 @@
-# examples/form_automation.py
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
 from llm.llm_integration import LLMSeleniumIntegration
 
 async def form_filling_workflow():

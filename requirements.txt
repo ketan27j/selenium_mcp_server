@@ -6,3 +6,4 @@ aiohttp>=3.9.0
 pytest
 fastapi
 webdriver-manager
+pytest-asyncio
