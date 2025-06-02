@@ -22,6 +22,7 @@ class LLMSeleniumIntegration:
         
         # Check Ollama connection
         ollama_ready = await self.ollama.check_ollama_connection()
+        logger.info(f"Ollama connection status: {ollama_ready}")
         if not ollama_ready:
             logger.warning("Ollama model not available, attempting to pull...")
             await self.ollama.pull_model_if_needed()
@@ -31,6 +32,7 @@ class LLMSeleniumIntegration:
         
         # Create system prompt with available tools
         tools_description = self._generate_tools_description()
+        logger.info(f"Available tools:\n{tools_description}")
         self.system_prompt = f"""
 You are an AI assistant that can control web browsers through Selenium automation.
 You have access to the following browser automation tools:

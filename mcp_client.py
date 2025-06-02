@@ -13,15 +13,23 @@ class SeleniumMCPClient:
     async def start_server(self):
         """Start the Selenium MCP server"""
         try:
+            # Start server process with additional error checking
             self.server_process = subprocess.Popen(
-                ["python", "selenium_mcp_server.py"],
+                ["python3", "selenium_mcp_server.py"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                bufsize=1  # Line buffered
             )
             
-            # Initialize connection
+            # Check if process started successfully
+            if self.server_process.poll() is not None:
+                stderr = self.server_process.stderr.read()
+                logger.error(f"Server failed to start: {stderr}")
+                return False
+                
+            # Initialize connection with timeout
             init_message = {
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -37,19 +45,21 @@ class SeleniumMCPClient:
             }
             
             await self._send_message(init_message)
-            response = await self._receive_message()
+            response = await self._receive_message(timeout=10.0)  # 10 second timeout
             
             if response and "result" in response:
-                print("MCP Server initialized successfully")
                 logger.info("MCP Server initialized successfully")
                 await self._list_tools()
                 return True
             else:
-                print(f"Failed to initialize server: {response}")
+                logger.error(f"Failed to initialize server: {response}")
                 return False
                 
         except Exception as e:
-            print(f"Error starting server: {e}")
+            logger.error(f"Error starting server: {e}")
+            if self.server_process:
+                self.server_process.terminate()
+                self.server_process = None
             return False
     
     async def _send_message(self, message: Dict[str, Any]):
@@ -59,15 +69,34 @@ class SeleniumMCPClient:
             self.server_process.stdin.write(message_str)
             self.server_process.stdin.flush()
     
-    async def _receive_message(self) -> Optional[Dict[str, Any]]:
-        """Receive message from MCP server"""
+    async def _receive_message(self, timeout: float = 5.0) -> Optional[Dict[str, Any]]:
+        """Receive message from MCP server with timeout"""
         if self.server_process and self.server_process.stdout:
             try:
-                line = self.server_process.stdout.readline().strip()
+                # Create an async task for reading
+                loop = asyncio.get_event_loop()
+                read_task = loop.run_in_executor(
+                    None, 
+                    self.server_process.stdout.readline
+                )
+                
+                # Wait for response with timeout
+                line = await asyncio.wait_for(read_task, timeout=timeout)
+                line = line.strip()
+                
                 if line:
-                    return json.loads(line)
-            except json.JSONDecodeError as e:
-                print(f"JSON decode error: {e}")
+                    try:
+                        return json.loads(line)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"JSON decode error: {e}, raw line: {line}")
+                        return None
+                
+            except asyncio.TimeoutError:
+                logger.error("Timeout waiting for server response")
+                return None
+            except Exception as e:
+                logger.error(f"Error reading from server: {e}")
+                return None
         return None
     
     async def _list_tools(self):

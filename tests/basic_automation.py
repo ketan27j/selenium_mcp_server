@@ -20,7 +20,7 @@ async def main():
         
         # Another example
         response = await integration.process_user_request(
-            "Click on the 'More information...' link and get the page title"
+            "Click on the 'Sign Up' button and get the page title"
         )
         print("Response:", response)
         
