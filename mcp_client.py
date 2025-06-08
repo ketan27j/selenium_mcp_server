@@ -3,64 +3,92 @@ import asyncio
 import json
 import subprocess
 from typing import List, Dict, Any, Optional
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
+
+from mcp import ClientSession,StdioServerParameters
+from mcp.client.stdio import stdio_client
 from monitoring.logger_config import logger
 
 class SeleniumMCPClient:
-    def __init__(self):
+    def __init__(self, server_path: Optional[str] = "./selenium_mcp_server.py"):
         self.server_process: Optional[subprocess.Popen] = None
+        self.session: Optional[ClientSession] = None
         self.available_tools: List[Dict[str, Any]] = []
+        self._stdio_context = None
+        self.exit_stack = AsyncExitStack()
+        self.server_path = server_path
     
     async def start_server(self):
         """Start the Selenium MCP server"""
         try:
             # Start server process with additional error checking
             venv_python = os.path.join(os.path.dirname(__file__), '.venv', 'bin', 'python3')
-            self.server_process = subprocess.Popen(
-                [venv_python, "test_minimal_server.py"],
-                # [venv_python, "selenium_mcp_server.py"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1  # Line buffered
-            )
+            # self.server_process = subprocess.Popen(
+            #     [venv_python, "test_minimal_server.py"],
+            #     # [venv_python, "selenium_mcp_server.py"],
+            #     stdin=subprocess.PIPE,
+            #     stdout=subprocess.PIPE,
+            #     stderr=subprocess.PIPE,
+            #     text=True,
+            #     bufsize=1  # Line buffered
+            # )
 
-            await asyncio.sleep(1)  # Give server time to start
+            # await asyncio.sleep(1)  # Give server time to start
             
             # Check if process started successfully
-            if self.server_process.poll() is not None:
-                stderr = self.server_process.stderr.read()
-                logger.error(f"Server failed to start: {stderr}")
-                return False
-                
+            # if self.server_process.poll() is not None:
+            #     stderr = self.server_process.stderr.read()
+            #     logger.error(f"Server failed to start: {stderr}")
+            #     return False
+            server_params = StdioServerParameters(
+                command="python3",
+                args=[self.server_path],
+            )
+            print("DEBUG: Creating stdio client...")
+            # Store the context manager for later cleanup
+            self._stdio_context = stdio_client(server_params)
+            stdio_transport = await self.exit_stack.enter_async_context(self._stdio_context)
+            self.stdio, self.write = stdio_transport
+
+            print("DEBUG: Initializing session...")
+            try:
+                self.session = await self.exit_stack.enter_async_context(ClientSession(self.stdio, self.write))
+                await self.session.initialize()
+                print("DEBUG: Session initialized successfully")
+            except asyncio.TimeoutError:
+                print("DEBUG: Session initialization timed out")
+                raise Exception("Session initialization timed out")
+            
             # Initialize connection with timeout
-            init_message = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {},
-                    "clientInfo": {
-                        "name": "selenium-client",
-                        "version": "1.0.0"
-                    }
-                }
-            }
+            # init_message = {
+            #     "jsonrpc": "2.0",
+            #     "id": 1,
+            #     "method": "initialize",
+            #     "params": {
+            #         "protocolVersion": "2024-11-05",
+            #         "capabilities": {},
+            #         "clientInfo": {
+            #             "name": "selenium-client",
+            #             "version": "1.0.0"
+            #         }
+            #     }
+            # }
             
-            await self._send_message(init_message)
-            response = await self._receive_message(timeout=10.0)  # 10 second timeout
+            # await self.session. send_message(init_message)
+            # response = await self.session.receive_message(timeout=10.0)  # 10 second timeout
             
-            if response and "result" in response:
-                logger.info("MCP Server initialized successfully")
-                await asyncio.sleep(1)  # Allow time for server to process initialization
-                await self._list_tools()
-                return True
-            else:
-                logger.error(f"Failed to initialize server: {response}")
-                return False
-                
+            # if response and "result" in response:
+            #     logger.info("MCP Server initialized successfully")
+            #     await asyncio.sleep(1)  # Allow time for server to process initialization
+            #     await self._list_tools()
+            #     return True
+            # else:
+            #     logger.error(f"Failed to initialize server: {response}")
+            #     return False
+            response = await self.session.list_tools()
+            tools = response.tools
+            print("\nConnected to server with tools:", [tool.name for tool in tools])
+
         except Exception as e:
             logger.error(f"Error starting server: {e}")
             if self.server_process:
