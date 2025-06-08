@@ -183,4 +183,7 @@ class SeleniumMCPClient:
             self.server_process.wait()
             self.server_process = None
 
+    async def cleanup(self):
+        await self.exit_stack.aclose()
+
 
