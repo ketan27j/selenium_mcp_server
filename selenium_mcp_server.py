@@ -45,6 +45,8 @@ class SeleniumMCPServer:
     
     def setup_handlers(self):
         """Setup MCP server handlers"""
+        logger.info(f"Server object type: {type(self.server)}")
+        logger.info(f"Server attributes: {dir(self.server)}")
         
         @self.server.list_tools()
         async def handle_list_tools() -> List[Tool]:
@@ -259,6 +261,11 @@ class SeleniumMCPServer:
                 logger.error(f"Error executing tool {name}: {str(e)}")
                 return [types.TextContent(type="text", text=f"Error: {str(e)}")]
 
+        # @self.server.request_handlers("tools/list")
+        # async def handle_tools_list_request(request) -> List[Tool]:
+        #     """Handle tools/list JSON-RPC request"""
+        #     return await handle_list_tools()  # Reuse the existing function
+        
     async def _start_browser(self, browser: str = "chrome", headless: bool = False, window_size: str = "1920,1080") -> List[types.TextContent]:
         """Start browser session"""
         try:

@@ -1,3 +1,4 @@
+import os
 import asyncio
 import json
 import subprocess
@@ -14,14 +15,18 @@ class SeleniumMCPClient:
         """Start the Selenium MCP server"""
         try:
             # Start server process with additional error checking
+            venv_python = os.path.join(os.path.dirname(__file__), '.venv', 'bin', 'python3')
             self.server_process = subprocess.Popen(
-                ["python3", "selenium_mcp_server.py"],
+                [venv_python, "test_minimal_server.py"],
+                # [venv_python, "selenium_mcp_server.py"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1  # Line buffered
             )
+
+            await asyncio.sleep(1)  # Give server time to start
             
             # Check if process started successfully
             if self.server_process.poll() is not None:
@@ -49,6 +54,7 @@ class SeleniumMCPClient:
             
             if response and "result" in response:
                 logger.info("MCP Server initialized successfully")
+                await asyncio.sleep(1)  # Allow time for server to process initialization
                 await self._list_tools()
                 return True
             else:
@@ -66,6 +72,7 @@ class SeleniumMCPClient:
         """Send message to MCP server"""
         if self.server_process and self.server_process.stdin:
             message_str = json.dumps(message) + "\n"
+            logger.debug(f"Sending message to server: {message_str.strip()}")
             self.server_process.stdin.write(message_str)
             self.server_process.stdin.flush()
     
@@ -85,8 +92,11 @@ class SeleniumMCPClient:
                 line = line.strip()
                 
                 if line:
+                    logger.debug(f"Received line from server: {line}")
                     try:
-                        return json.loads(line)
+                        result = json.loads(line)
+                        logger.debug(f"Parsed response: {result}")
+                        return result
                     except json.JSONDecodeError as e:
                         logger.error(f"JSON decode error: {e}, raw line: {line}")
                         return None
@@ -107,13 +117,17 @@ class SeleniumMCPClient:
             "method": "tools/list"
         }
         
+        logger.info("Requesting tools list from MCP server",message)
         await self._send_message(message)
-        response = await self._receive_message()
+        response = await self._receive_message(timeout=10.0)  
         
+        logger.info(f"Tools list response: {response}")          
         if response and "result" in response:
             self.available_tools = response["result"]["tools"]
-            print(f"Available tools: {[tool['name'] for tool in self.available_tools]}")
-    
+            logger.info(f"Available tools: {[tool['name'] for tool in self.available_tools]}")
+        else:
+            logger.error(f"Failed to get tools list: {response}")  # Add this line
+
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Call a tool on the MCP server"""
         message = {

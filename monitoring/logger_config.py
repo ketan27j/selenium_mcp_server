@@ -12,7 +12,7 @@ def setup_logging():
     log_file = log_dir / "selenium_mcp.log"
     
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(str(log_file)),
