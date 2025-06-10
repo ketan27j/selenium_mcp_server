@@ -16,6 +16,14 @@ async def test():
     result = await server._navigate_to("https://solalerter.cryptoconsulting.tech")
     print("Navigation:", result[0].text)
     
+    # Test screenshot
+    result = await server._take_screenshot()
+    print("Screenshot taken:", result[0].text)
+
+    # Test element interaction
+    result = await server._click_element(locator="button#sign-up")
+    print("Element click:", result[0].text)
+
     # Test page info
     result = await server._get_page_info()
     print("Page info:", result[0].text)

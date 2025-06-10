@@ -66,7 +66,7 @@ class SeleniumMCPServer:
                             },
                             "headless": {
                                 "type": "boolean",
-                                "default": False,
+                                "default": True,
                                 "description": "Run browser in headless mode"
                             },
                             "window_size": {
@@ -266,7 +266,7 @@ class SeleniumMCPServer:
         #     """Handle tools/list JSON-RPC request"""
         #     return await handle_list_tools()  # Reuse the existing function
         
-    async def _start_browser(self, browser: str = "chrome", headless: bool = False, window_size: str = "1920,1080") -> List[types.TextContent]:
+    async def _start_browser(self, browser: str = "chrome", headless: bool = True, window_size: str = "1920,1080") -> List[types.TextContent]:
         """Start browser session"""
         try:
             if self.driver:
