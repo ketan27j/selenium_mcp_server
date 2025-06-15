@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "selenium-automation": {
+      "command": "./.venv/bin/python3",
+      "args": ["-u", "selenium_mcp_server.py"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PATH": "./.venv/bin/python3",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "disabled": false,
+      "alwaysAllow": [
+        "start_browser",
+        "navigate_to",
+        "find_element",
+        "click_element",
+        "type_text",
+        "get_text",
+        "get_page_info",
+        "take_screenshot",
+        "execute_script",
+        "close_browser"
+      ]
+    }
+  }
+}

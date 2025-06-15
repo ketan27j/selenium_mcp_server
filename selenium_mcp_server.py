@@ -6,47 +6,63 @@ Provides web automation capabilities through MCP protocol
 
 import asyncio
 import json
+import sys
+import traceback
 import logging
 from typing import Any, Dict, List, Optional, Sequence
 from urllib.parse import urljoin, urlparse
+from monitoring.logger_config import logger
 
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
+    from selenium.webdriver.common.action_chains import ActionChains
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.chrome.options import Options as ChromeOptions
+    from selenium.webdriver.firefox.options import Options as FirefoxOptions
+    from selenium.common.exceptions import TimeoutException, NoSuchElementException
+    logger.info("Selenium imports successful")
+except ImportError as e:
+    logger.error(f"Failed to import Selenium: {e}")
+    sys.exit(1)
 
-from mcp.server.models import InitializationOptions
-from mcp.server import NotificationOptions, Server
-from mcp.types import (
-    Resource,
-    Tool,
-    TextContent,
-    ImageContent,
-    EmbeddedResource,
-    LoggingLevel
-)
-import mcp.types as types
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("selenium-mcp-server")
+try:
+    from mcp.server.models import InitializationOptions
+    from mcp.server import NotificationOptions, Server
+    from mcp.types import (
+        Resource,
+        Tool,
+        TextContent,
+        ImageContent,
+        EmbeddedResource,
+        LoggingLevel
+    )
+    import mcp.types as types
+    logger.info("MCP imports successful")
+except ImportError as e:
+    logger.error(f"Failed to import MCP: {e}")
+    sys.exit(1)
 
 class SeleniumMCPServer:
     def __init__(self):
-        self.server = Server("selenium-automation")
-        self.driver: Optional[webdriver.Remote] = None
-        self.wait: Optional[WebDriverWait] = None
-        self.setup_handlers()
+        logger.info("Initializing SeleniumMCPServer")
+        try:
+            self.server = Server("selenium-automation")
+            self.driver: Optional[webdriver.Remote] = None
+            self.wait: Optional[WebDriverWait] = None
+            logger.info("Server initialized successfully")
+            self.setup_handlers()
+            logger.info("Handlers setup completed")
+        except Exception as e:
+            logger.error(f"Failed to initialize server: {e}")
+            logger.error(traceback.format_exc())
+            raise
     
     def setup_handlers(self):
         """Setup MCP server handlers"""
-        logger.info(f"Server object type: {type(self.server)}")
-        logger.info(f"Server attributes: {dir(self.server)}")
+        logger.info("Setting up handlers")
         
         @self.server.list_tools()
         async def handle_list_tools() -> List[Tool]:
@@ -106,6 +122,37 @@ class SeleniumMCPServer:
                                 "enum": ["css", "xpath", "id", "name", "class", "tag", "link_text", "partial_link_text"],
                                 "default": "css",
                                 "description": "Type of locator"
+                            },
+                            "timeout": {
+                                "type": "number",
+                                "default": 10,
+                                "description": "Timeout in seconds"
+                            }
+                        },
+                        "required": ["locator"]
+                    }
+                ),
+                Tool(
+                    name="get_element_xpath",
+                    description="Get the precise XPath of an element for reliable automation",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "locator": {
+                                "type": "string",
+                                "description": "Initial locator to find the element (CSS selector, XPath, etc.)"
+                            },
+                            "locator_type": {
+                                "type": "string",
+                                "enum": ["css", "xpath", "id", "name", "class", "tag", "link_text", "partial_link_text"],
+                                "default": "css",
+                                "description": "Type of locator"
+                            },
+                            "xpath_type": {
+                                "type": "string",
+                                "enum": ["absolute", "relative", "smart"],
+                                "default": "smart",
+                                "description": "Type of XPath to generate: absolute (full path), relative (shorter), or smart (optimized for stability)"
                             },
                             "timeout": {
                                 "type": "number",
@@ -241,6 +288,8 @@ class SeleniumMCPServer:
                     return await self._navigate_to(**arguments)
                 elif name == "find_element":
                     return await self._find_element(**arguments)
+                elif name == "get_element_xpath":
+                    return await self._get_element_xpath(**arguments)
                 elif name == "click_element":
                     return await self._click_element(**arguments)
                 elif name == "type_text":
@@ -259,6 +308,7 @@ class SeleniumMCPServer:
                     return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
             except Exception as e:
                 logger.error(f"Error executing tool {name}: {str(e)}")
+                logger.error(traceback.format_exc())
                 return [types.TextContent(type="text", text=f"Error: {str(e)}")]
 
         # @self.server.request_handlers("tools/list")
@@ -268,6 +318,7 @@ class SeleniumMCPServer:
         
     async def _start_browser(self, browser: str = "chrome", headless: bool = True, window_size: str = "1920,1080") -> List[types.TextContent]:
         """Start browser session"""
+        logger.info(f"Starting browser: {browser}, headless: {headless}")
         try:
             if self.driver:
                 self.driver.quit()
@@ -291,6 +342,7 @@ class SeleniumMCPServer:
             self.wait = WebDriverWait(self.driver, 10)
             return [types.TextContent(type="text", text=f"Browser {browser} started successfully")]
         except Exception as e:
+            logger.error(f"Failed to start browser: {e}")
             return [types.TextContent(type="text", text=f"Failed to start browser: {str(e)}")]
 
     async def _navigate_to(self, url: str) -> List[types.TextContent]:
@@ -317,6 +369,247 @@ class SeleniumMCPServer:
             "partial_link_text": By.PARTIAL_LINK_TEXT
         }
         return locator_map.get(locator_type, By.CSS_SELECTOR), locator
+
+        def _generate_xpath(self, element, xpath_type: str = "smart"):
+        """Generate XPath for an element"""
+        if xpath_type == "absolute":
+            return self._get_absolute_xpath(element)
+        elif xpath_type == "relative":
+            return self._get_relative_xpath(element)
+        else:  # smart
+            return self._get_smart_xpath(element)
+
+    def _get_absolute_xpath(self, element):
+        """Generate absolute XPath (full path from root)"""
+        script = """
+        function getAbsoluteXPath(element) {
+            var xpath = '';
+            for (; element && element.nodeType == 1; element = element.parentNode) {
+                var id = element.id;
+                if (id) {
+                    xpath = '//*[@id="' + id + '"]' + xpath;
+                    break;
+                }
+                var tagName = element.tagName.toLowerCase();
+                var siblings = element.parentNode ? element.parentNode.children : [];
+                var sameTagSiblings = [];
+                for (var i = 0; i < siblings.length; i++) {
+                    if (siblings[i].tagName.toLowerCase() === tagName) {
+                        sameTagSiblings.push(siblings[i]);
+                    }
+                }
+                if (sameTagSiblings.length > 1) {
+                    var index = sameTagSiblings.indexOf(element) + 1;
+                    xpath = '/' + tagName + '[' + index + ']' + xpath;
+                } else {
+                    xpath = '/' + tagName + xpath;
+                }
+            }
+            return xpath.startsWith('/') ? xpath : '/' + xpath;
+        }
+        return getAbsoluteXPath(arguments[0]);
+        """
+        return self.driver.execute_script(script, element)
+
+    def _get_relative_xpath(self, element):
+        """Generate relative XPath (shorter, context-aware)"""
+        script = """
+        function getRelativeXPath(element) {
+            // Check for unique attributes first
+            if (element.id) {
+                return '//*[@id="' + element.id + '"]';
+            }
+            
+            var className = element.className;
+            if (className && typeof className === 'string') {
+                var classes = className.trim().split(/\\s+/);
+                for (var i = 0; i < classes.length; i++) {
+                    var selector = '//*[@class="' + classes[i] + '"]';
+                    var elements = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                    if (elements.snapshotLength === 1) {
+                        return selector;
+                    }
+                }
+            }
+            
+            // Check for unique text content
+            var textContent = element.textContent.trim();
+            if (textContent && textContent.length < 50) {
+                var selector = '//*[text()="' + textContent + '"]';
+                var elements = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                if (elements.snapshotLength === 1) {
+                    return selector;
+                }
+            }
+            
+            // Fall back to tag with attributes
+            var xpath = '//' + element.tagName.toLowerCase();
+            if (element.name) {
+                xpath += '[@name="' + element.name + '"]';
+            } else if (element.type) {
+                xpath += '[@type="' + element.type + '"]';
+            } else if (className) {
+                xpath += '[@class="' + className + '"]';
+            }
+            
+            return xpath;
+        }
+        return getRelativeXPath(arguments[0]);
+        """
+        return self.driver.execute_script(script, element)
+
+    def _get_smart_xpath(self, element):
+        """Generate smart XPath (optimized for stability and uniqueness)"""
+        script = """
+        function getSmartXPath(element) {
+            // Priority 1: ID (most stable)
+            if (element.id) {
+                return '//*[@id="' + element.id + '"]';
+            }
+            
+            // Priority 2: Data attributes (usually stable)
+            var attributes = element.attributes;
+            for (var i = 0; i < attributes.length; i++) {
+                var attr = attributes[i];
+                if (attr.name.startsWith('data-') && attr.value) {
+                    var selector = '//*[@' + attr.name + '="' + attr.value + '"]';
+                    var elements = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                    if (elements.snapshotLength === 1) {
+                        return selector;
+                    }
+                }
+            }
+            
+            // Priority 3: Name attribute for form elements
+            if (element.name && (element.tagName === 'INPUT' || element.tagName === 'SELECT' || element.tagName === 'TEXTAREA')) {
+                var selector = '//' + element.tagName.toLowerCase() + '[@name="' + element.name + '"]';
+                var elements = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                if (elements.snapshotLength === 1) {
+                    return selector;
+                }
+            }
+            
+            // Priority 4: Unique class combinations
+            var className = element.className;
+            if (className && typeof className === 'string') {
+                var classes = className.trim().split(/\\s+/);
+                if (classes.length > 1) {
+                    // Try combination of first two classes
+                    var selector = '//*[contains(@class, "' + classes[0] + '") and contains(@class, "' + classes[1] + '")]';
+                    var elements = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                    if (elements.snapshotLength === 1) {
+                        return selector;
+                    }
+                }
+            }
+            
+            // Priority 5: Text content for clickable elements
+            if (element.tagName === 'BUTTON' || element.tagName === 'A' || element.getAttribute('role') === 'button') {
+                var textContent = element.textContent.trim();
+                if (textContent && textContent.length < 50) {
+                    var selector = '//' + element.tagName.toLowerCase() + '[normalize-space(text())="' + textContent + '"]';
+                    var elements = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                    if (elements.snapshotLength === 1) {
+                        return selector;
+                    }
+                }
+            }
+            
+            // Priority 6: Parent-child relationship with unique parent
+            var parent = element.parentNode;
+            if (parent && parent.id) {
+                var tagName = element.tagName.toLowerCase();
+                var siblings = parent.children;
+                var sameTagSiblings = [];
+                for (var i = 0; i < siblings.length; i++) {
+                    if (siblings[i].tagName.toLowerCase() === tagName) {
+                        sameTagSiblings.push(siblings[i]);
+                    }
+                }
+                if (sameTagSiblings.length === 1) {
+                    return '//*[@id="' + parent.id + '"]/' + tagName;
+                } else {
+                    var index = sameTagSiblings.indexOf(element) + 1;
+                    return '//*[@id="' + parent.id + '"]/' + tagName + '[' + index + ']';
+                }
+            }
+            
+            // Fallback: position-based XPath
+            var xpath = '';
+            var current = element;
+            while (current && current.nodeType === 1) {
+                var tagName = current.tagName.toLowerCase();
+                if (current.id) {
+                    xpath = '//*[@id="' + current.id + '"]' + xpath;
+                    break;
+                }
+                
+                var parent = current.parentNode;
+                if (parent) {
+                    var siblings = [];
+                    for (var i = 0; i < parent.children.length; i++) {
+                        if (parent.children[i].tagName.toLowerCase() === tagName) {
+                            siblings.push(parent.children[i]);
+                        }
+                    }
+                    if (siblings.length > 1) {
+                        var index = siblings.indexOf(current) + 1;
+                        xpath = '/' + tagName + '[' + index + ']' + xpath;
+                    } else {
+                        xpath = '/' + tagName + xpath;
+                    }
+                }
+                current = parent;
+            }
+            
+            return xpath || '//' + element.tagName.toLowerCase();
+        }
+        return getSmartXPath(arguments[0]);
+        """
+        return self.driver.execute_script(script, element)
+
+    async def _get_element_xpath(self, locator: str, locator_type: str = "css", xpath_type: str = "smart", timeout: int = 10) -> List[types.TextContent]:
+        """Get precise XPath of an element"""
+        if not self.driver:
+            return [types.TextContent(type="text", text="Browser not started")]
+        
+        try:
+            # First find the element using the provided locator
+            by, loc = self._get_by_locator(locator_type, locator)
+            wait = WebDriverWait(self.driver, timeout)
+            element = wait.until(EC.presence_of_element_located((by, loc)))
+            
+            # Generate the requested type of XPath
+            xpath = self._generate_xpath(element, xpath_type)
+            
+            # Verify the generated XPath works
+            try:
+                test_element = self.driver.find_element(By.XPATH, xpath)
+                xpath_valid = test_element == element
+            except:
+                xpath_valid = False
+            
+            # Get element info for context
+            element_info = {
+                "original_locator": f"{locator_type}: {locator}",
+                "generated_xpath": xpath,
+                "xpath_type": xpath_type,
+                "xpath_valid": xpath_valid,
+                "element_info": {
+                    "tag_name": element.tag_name,
+                    "text": element.text[:100] + "..." if len(element.text) > 100 else element.text,
+                    "id": element.get_attribute("id") or "",
+                    "class": element.get_attribute("class") or "",
+                    "name": element.get_attribute("name") or ""
+                }
+            }
+            
+            return [types.TextContent(type="text", text=f"XPath Generated:\n{json.dumps(element_info, indent=2)}")]
+            
+        except TimeoutException:
+            return [types.TextContent(type="text", text=f"Element not found within {timeout} seconds using locator: {locator_type}={locator}")]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Error generating XPath: {str(e)}")]
 
     async def _find_element(self, locator: str, locator_type: str = "css", timeout: int = 10) -> List[types.TextContent]:
         """Find element on page"""
@@ -438,26 +731,43 @@ class SeleniumMCPServer:
 
     async def run(self):
         """Run the MCP server"""
-        from mcp.server.stdio import stdio_server
-        
-        async with stdio_server() as (read_stream, write_stream):
-            await self.server.run(
-                read_stream,
-                write_stream,
-                InitializationOptions(
-                    server_name="selenium-automation",
-                    server_version="1.0.0",
-                    capabilities=self.server.get_capabilities(
-                        notification_options=NotificationOptions(),
-                        experimental_capabilities={}
+        logger.info("Starting MCP server run")
+        try:
+            from mcp.server.stdio import stdio_server
+            
+            logger.info("Setting up stdio server")
+            async with stdio_server() as (read_stream, write_stream):
+                logger.info("Running server")
+                await self.server.run(
+                    read_stream,
+                    write_stream,
+                    InitializationOptions(
+                        server_name="selenium-automation",
+                        server_version="1.0.0",
+                        capabilities=self.server.get_capabilities(
+                            notification_options=NotificationOptions(),
+                            experimental_capabilities={}
+                        )
                     )
                 )
-            )
+        except Exception as e:
+            logger.error(f"Error in server run: {e}")
+            logger.error(traceback.format_exc())
+            raise
 
 def main():
     """Main entry point"""
-    server = SeleniumMCPServer()
-    asyncio.run(server.run())
+    logger.info("=== Starting Selenium MCP Server ===")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Working directory: {sys.path}")
+    try:
+        server = SeleniumMCPServer()
+        logger.info("Server created, starting run")
+        asyncio.run(server.run())
+    except Exception as e:
+        logger.error(f"Fatal error in main: {e}")
+        logger.error(traceback.format_exc())
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
