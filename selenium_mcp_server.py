@@ -6,47 +6,63 @@ Provides web automation capabilities through MCP protocol
 
 import asyncio
 import json
+import sys
+import traceback
 import logging
 from typing import Any, Dict, List, Optional, Sequence
 from urllib.parse import urljoin, urlparse
+from monitoring.logger_config import logger
 
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
+    from selenium.webdriver.common.action_chains import ActionChains
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.chrome.options import Options as ChromeOptions
+    from selenium.webdriver.firefox.options import Options as FirefoxOptions
+    from selenium.common.exceptions import TimeoutException, NoSuchElementException
+    logger.info("Selenium imports successful")
+except ImportError as e:
+    logger.error(f"Failed to import Selenium: {e}")
+    sys.exit(1)
 
-from mcp.server.models import InitializationOptions
-from mcp.server import NotificationOptions, Server
-from mcp.types import (
-    Resource,
-    Tool,
-    TextContent,
-    ImageContent,
-    EmbeddedResource,
-    LoggingLevel
-)
-import mcp.types as types
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("selenium-mcp-server")
+try:
+    from mcp.server.models import InitializationOptions
+    from mcp.server import NotificationOptions, Server
+    from mcp.types import (
+        Resource,
+        Tool,
+        TextContent,
+        ImageContent,
+        EmbeddedResource,
+        LoggingLevel
+    )
+    import mcp.types as types
+    logger.info("MCP imports successful")
+except ImportError as e:
+    logger.error(f"Failed to import MCP: {e}")
+    sys.exit(1)
 
 class SeleniumMCPServer:
     def __init__(self):
-        self.server = Server("selenium-automation")
-        self.driver: Optional[webdriver.Remote] = None
-        self.wait: Optional[WebDriverWait] = None
-        self.setup_handlers()
+        logger.info("Initializing SeleniumMCPServer")
+        try:
+            self.server = Server("selenium-automation")
+            self.driver: Optional[webdriver.Remote] = None
+            self.wait: Optional[WebDriverWait] = None
+            logger.info("Server initialized successfully")
+            self.setup_handlers()
+            logger.info("Handlers setup completed")
+        except Exception as e:
+            logger.error(f"Failed to initialize server: {e}")
+            logger.error(traceback.format_exc())
+            raise
     
     def setup_handlers(self):
         """Setup MCP server handlers"""
-        logger.info(f"Server object type: {type(self.server)}")
-        logger.info(f"Server attributes: {dir(self.server)}")
+        logger.info("Setting up handlers")
         
         @self.server.list_tools()
         async def handle_list_tools() -> List[Tool]:
@@ -259,6 +275,7 @@ class SeleniumMCPServer:
                     return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
             except Exception as e:
                 logger.error(f"Error executing tool {name}: {str(e)}")
+                logger.error(traceback.format_exc())
                 return [types.TextContent(type="text", text=f"Error: {str(e)}")]
 
         # @self.server.request_handlers("tools/list")
@@ -268,6 +285,7 @@ class SeleniumMCPServer:
         
     async def _start_browser(self, browser: str = "chrome", headless: bool = True, window_size: str = "1920,1080") -> List[types.TextContent]:
         """Start browser session"""
+        logger.info(f"Starting browser: {browser}, headless: {headless}")
         try:
             if self.driver:
                 self.driver.quit()
@@ -291,6 +309,7 @@ class SeleniumMCPServer:
             self.wait = WebDriverWait(self.driver, 10)
             return [types.TextContent(type="text", text=f"Browser {browser} started successfully")]
         except Exception as e:
+            logger.error(f"Failed to start browser: {e}")
             return [types.TextContent(type="text", text=f"Failed to start browser: {str(e)}")]
 
     async def _navigate_to(self, url: str) -> List[types.TextContent]:
@@ -438,26 +457,43 @@ class SeleniumMCPServer:
 
     async def run(self):
         """Run the MCP server"""
-        from mcp.server.stdio import stdio_server
-        
-        async with stdio_server() as (read_stream, write_stream):
-            await self.server.run(
-                read_stream,
-                write_stream,
-                InitializationOptions(
-                    server_name="selenium-automation",
-                    server_version="1.0.0",
-                    capabilities=self.server.get_capabilities(
-                        notification_options=NotificationOptions(),
-                        experimental_capabilities={}
+        logger.info("Starting MCP server run")
+        try:
+            from mcp.server.stdio import stdio_server
+            
+            logger.info("Setting up stdio server")
+            async with stdio_server() as (read_stream, write_stream):
+                logger.info("Running server")
+                await self.server.run(
+                    read_stream,
+                    write_stream,
+                    InitializationOptions(
+                        server_name="selenium-automation",
+                        server_version="1.0.0",
+                        capabilities=self.server.get_capabilities(
+                            notification_options=NotificationOptions(),
+                            experimental_capabilities={}
+                        )
                     )
                 )
-            )
+        except Exception as e:
+            logger.error(f"Error in server run: {e}")
+            logger.error(traceback.format_exc())
+            raise
 
 def main():
     """Main entry point"""
-    server = SeleniumMCPServer()
-    asyncio.run(server.run())
+    logger.info("=== Starting Selenium MCP Server ===")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Working directory: {sys.path}")
+    try:
+        server = SeleniumMCPServer()
+        logger.info("Server created, starting run")
+        asyncio.run(server.run())
+    except Exception as e:
+        logger.error(f"Fatal error in main: {e}")
+        logger.error(traceback.format_exc())
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
