@@ -370,7 +370,7 @@ class SeleniumMCPServer:
         }
         return locator_map.get(locator_type, By.CSS_SELECTOR), locator
 
-        def _generate_xpath(self, element, xpath_type: str = "smart"):
+    def _generate_xpath(self, element, xpath_type: str = "smart"):
         """Generate XPath for an element"""
         if xpath_type == "absolute":
             return self._get_absolute_xpath(element)
